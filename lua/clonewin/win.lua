@@ -1,3 +1,4 @@
+local cfg = require("clonewin.config")
 local GROUP_PREFIX = "__virtwin__"
 
 ---"observed" - original window with scratch buffer
@@ -13,23 +14,10 @@ local GROUP_PREFIX = "__virtwin__"
 ---@field origin_buf integer Original buffer with window content
 ---@field wins table<WinType, WinData>
 ---@field group integer Augroup for current instance
+---@field opts CloneWinCfg
 ---@field _mapping boolean For avoid WinEnter when mappings is fire
 local CloneWin = {}
 CloneWin.__index = CloneWin
-
----@param opts vim.api.keyset.win_config
----@return vim.api.keyset.win_config
-local function win_opts(opts)
-  return vim.tbl_extend("force", {
-    relative = "win",
-    width = 1,
-    height = 1,
-    row = 0,
-    col = 0,
-    focusable = false,
-    noautocmd = true,
-  }, opts)
-end
 
 ---@param win integer
 ---@return boolean
@@ -45,8 +33,22 @@ local function safe_win_close(win)
   return ok
 end
 
+---Call fn with temporary current win and buf
+---@param win integer
+---@param buf integer
+---@param fn fun()
+local function call_for_win_buf(win, buf, fn)
+  vim.api.nvim_win_call(win, function()
+    vim.api.nvim_buf_call(buf, fn)
+  end)
+end
+
 ---Create new virtwin instance
-function CloneWin.new(win, buf)
+---@param win integer?
+---@param buf integer?
+---@param opts CloneWinCfg?
+---@return CloneWin?, string?
+function CloneWin.new(win, buf, opts)
   win = win or vim.api.nvim_get_current_win()
   buf = buf or vim.api.nvim_get_current_buf()
 
@@ -55,6 +57,7 @@ function CloneWin.new(win, buf)
     origin_buf = buf,
     wins = {},
     group = vim.api.nvim_create_augroup(("%s%s"):format(GROUP_PREFIX, win), {}),
+    opts = vim.tbl_deep_extend("force", cfg.config, opts or {}),
     _mapping = false,
   }, CloneWin)
 
@@ -86,28 +89,36 @@ function CloneWin:_setup_observed_win()
   local lines = vim.split((" \n"):rep(count), "\n")
 
   self.wins.observed = { win = self.origin_win, buf = buf }
-  vim.wo[self.origin_win].winhighlight = "CursorLine:Normal"
+
+  call_for_win_buf(self.origin_win, buf, function()
+    for key, value in pairs(self.opts.origin_win_opts) do
+      vim.opt_local[key] = value
+    end
+  end)
 
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 end
 
 function CloneWin:_setup_clone_win()
   local info = vim.fn.getwininfo(self.origin_win)[1]
-  local win = vim.api.nvim_open_win(
-    self.origin_buf,
-    true,
-    win_opts({
-      win = self.origin_win,
-      width = self:_calc_clone_width(info),
-      height = info.height,
-    })
-  )
+  local win = vim.api.nvim_open_win(self.origin_buf, true, {
+    relative = "win",
+    win = self.origin_win,
+    row = 0,
+    col = 0,
+    focusable = false,
+    noautocmd = true,
+    width = self:_calc_clone_width(info),
+    height = info.height,
+  })
+
   self.wins.clone = { win = win, buf = self.origin_buf }
 
-  vim.wo[win].linebreak = true
-  vim.wo[win].wrap = true
-  vim.bo[self.origin_buf].textwidth = 0
-  vim.wo[win].winhighlight = "NormalFloat:Normal,NormalNC:Normal"
+  call_for_win_buf(win, self.origin_buf, function()
+    for key, value in pairs(self.opts.clone_win_opts) do
+      vim.opt_local[key] = value
+    end
+  end)
 
   return win
 end
@@ -116,12 +127,15 @@ end
 ---@param info vim.fn.getwininfo.ret.item
 ---@return integer
 function CloneWin:_calc_clone_width(info)
-  local ok, tw = pcall(
-    vim.filetype.get_option,
-    vim.bo[self.origin_buf].filetype,
-    "textwidth"
-  )
-  tw = ok and tw or 80
+  local tw = self.opts.max_width
+  if not tw then
+    local ok, res = pcall(
+      vim.filetype.get_option,
+      vim.bo[self.origin_buf].filetype,
+      "textwidth"
+    )
+    tw = ok and tonumber(res) or 100
+  end
 
   local desired_ww = tw + info.textoff
   return math.min(desired_ww, info.width)
@@ -276,15 +290,7 @@ end
 function CloneWin:_clone_set_keymaps()
   local map = vim.keymap.set
 
-  local mappings = {
-    ["<C-l>"] = "<C-w>l",
-    ["<C-h>"] = "<C-w>h",
-    ["<C-j>"] = "<C-w>j",
-    ["<C-k>"] = "<C-w>k",
-    ["<C-;>"] = "<C-;>",
-  }
-
-  for lhs, rhs in pairs(mappings) do
+  for lhs, rhs in pairs(self.opts.mappings) do
     map("n", lhs, self:_exec_origin_map(rhs), { buffer = self.origin_buf })
   end
 end
