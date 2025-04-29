@@ -1,5 +1,6 @@
 local cfg = require("clonewin.config")
 local GROUP_PREFIX = "__virtwin__"
+local log = require("clonewin.logger")
 
 ---"observed" - original window with scratch buffer
 ---"clone" - float front window with original buffer
@@ -69,6 +70,7 @@ function CloneWin.new(win, buf, opts)
   end)
 
   if not ok then
+    log.error("Failed to create CloneWin: %s", err)
     vim.notify(
       ("Failed to create CloneWin: %s"):format(err),
       vim.log.levels.ERROR
@@ -76,10 +78,16 @@ function CloneWin.new(win, buf, opts)
     return nil, err
   end
 
+  log.trace(
+    "Create clone window (%s) for observed window (%s)",
+    w.wins.clone.win,
+    w.origin_win
+  )
   return w, nil
 end
 
 function CloneWin:_setup_observed_win()
+  log.trace("Setup observed window: %s", self.origin_win)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(self.origin_win, buf)
   local count = math.min(
@@ -112,6 +120,7 @@ function CloneWin:_setup_clone_win()
     height = info.height,
   })
 
+  log.trace("Setup clone window: %s", win)
   self.wins.clone = { win = win, buf = self.origin_buf }
 
   call_for_win_buf(win, self.origin_buf, function()
@@ -154,6 +163,11 @@ end
 ---@param restore_origin boolean? If true, set origin buffer to origin window
 ---@return boolean
 function CloneWin:close_clone(restore_origin)
+  log.trace(
+    "Close clone window: %s. Restore: %s",
+    self.wins.clone.win,
+    restore_origin
+  )
   if restore_origin then
     vim.api.nvim_win_set_buf(self.origin_win, self.wins.clone.buf)
   end
@@ -164,6 +178,7 @@ end
 ---Close original window
 ---@return boolean
 function CloneWin:close_origin()
+  log.trace("Close origin window: %s", self.wins.observed.win)
   vim.api.nvim_buf_delete(self.wins.observed.buf, { force = true })
   return safe_win_close(self.origin_win)
 end
@@ -178,7 +193,9 @@ function CloneWin:_set_autocmds()
       tostring(self.wins.observed.win),
       tostring(self.wins.clone.win),
     },
-    callback = function()
+    callback = function(e)
+      local win = vim.api.nvim_get_current_win()
+      log.trace("%s event. Win: %s, Buf: %s", e.event, win, e.buf)
       self:close_clone()
       self:close_origin()
       self:_clear_autocmds()
@@ -188,8 +205,9 @@ function CloneWin:_set_autocmds()
   -- Adjust window size if the original window resized
   on_event("WinResized", {
     group = self.group,
-    callback = function()
+    callback = function(e)
       if vim.tbl_contains(vim.v.event.windows, self.origin_win) then
+        log.trace("%s event. Win: %s, Buf: %s", e.event, self.origin_win, e.buf)
         vim.schedule(function()
           if not vim.api.nvim_win_is_valid(self.wins.clone.win) then
             return
@@ -204,11 +222,20 @@ function CloneWin:_set_autocmds()
   -- Set clone window current, if the cursor jumps to the original window
   on_event("WinEnter", {
     group = self.group,
-    callback = function()
-      if vim.api.nvim_get_current_win() == self.wins.observed.win then
+    callback = function(e)
+      local win = vim.api.nvim_get_current_win()
+      if win == self.wins.observed.win then
         if self:_is_mapping() then
+          log.trace("%s event. Win: %s, Buf: %s. Mapping", e.event, win, e.buf)
           return
         end
+        log.trace(
+          "%s event. Win: %s, Buf: %s. Set current: %s",
+          e.event,
+          win,
+          e.buf,
+          self.wins.clone.win
+        )
         vim.api.nvim_set_current_win(self.wins.clone.win)
       end
     end,
@@ -220,6 +247,7 @@ function CloneWin:_set_autocmds()
     callback = function(e)
       local cwin = vim.api.nvim_get_current_win()
       if cwin == self.wins.clone.win then
+        log.trace("%s event. Win: %s, Buf: %s", e.event, cwin, e.buf)
         -- If reopen same buffer, do nothing
         if e.buf == self.origin_buf then
           return

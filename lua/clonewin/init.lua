@@ -1,5 +1,6 @@
 local cfg = require("clonewin.config")
 local w = require("clonewin.win")
+local log = require("clonewin.logger")
 
 local M = {}
 
@@ -7,13 +8,16 @@ local M = {}
 ---@param opts CloneWinCfg?
 function M.setup(opts)
   cfg.merge_config(opts)
+  log.trace("Setup clonewin.nvim ==================================")
 
-  vim.api.nvim_create_autocmd("BufEnter", {
+  vim.api.nvim_create_autocmd({ "BufEnter" }, {
     callback = function(e)
       local ft = vim.bo[e.buf].ft
       if vim.tbl_contains(cfg.config.ft, ft) then
         local win = vim.api.nvim_get_current_win()
         local win_cfg = vim.api.nvim_win_get_config(win)
+
+        log.debug("%s event. Win: %s, Buf: %s, FT: %s", e.event, win, e.buf, ft)
 
         if win_cfg.relative == "" then
           vim.schedule(function()
