@@ -12,6 +12,9 @@ function M.setup(opts)
 
   vim.api.nvim_create_autocmd({ "BufEnter" }, {
     callback = vim.schedule_wrap(function(e)
+      if not vim.api.nvim_buf_is_valid(e.buf) then
+        return
+      end
       local ft = vim.bo[e.buf].ft
       if vim.tbl_contains(cfg.config.ft, ft) then
         local win = vim.api.nvim_get_current_win()

@@ -226,7 +226,7 @@ function CloneWin:_set_autocmds()
     group = self.group,
     callback = vim.schedule_wrap(function(e)
       local win = vim.api.nvim_get_current_win()
-      if win == self.wins.observed.win then
+      if win == self.wins.observed.win and vim.api.nvim_win_is_valid(self.wins.clone.win) then
         if self:_is_mapping() then
           log.trace("%s event. Win: %s, Buf: %s. Mapping", e.event, win, e.buf)
           return
