@@ -114,7 +114,7 @@ function CloneWin:_setup_clone_win()
     win = self.origin_win,
     row = 0,
     col = 0,
-    focusable = false,
+    focusable = true,
     noautocmd = true,
     width = self:_calc_clone_width(info),
     height = info.height,
