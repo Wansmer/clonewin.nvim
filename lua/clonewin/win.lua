@@ -179,8 +179,11 @@ end
 ---@return boolean
 function CloneWin:close_origin()
   log.trace("Close origin window: %s", self.wins.observed.win)
-  vim.api.nvim_buf_delete(self.wins.observed.buf, { force = true })
-  return safe_win_close(self.origin_win)
+  return pcall(function()
+    -- first to close original window, delete buffer after
+    safe_win_close(self.origin_win)
+    vim.api.nvim_buf_delete(self.wins.observed.buf, { force = true })
+  end)
 end
 
 function CloneWin:_set_autocmds()
