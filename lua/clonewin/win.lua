@@ -52,12 +52,12 @@ end
 function CloneWin.new(win, buf, opts)
   win = win or vim.api.nvim_get_current_win()
   buf = buf or vim.api.nvim_get_current_buf()
-
+  local group = vim.api.nvim_create_augroup(("%s%s"):format(GROUP_PREFIX, win), {})
   local w = setmetatable({
     origin_win = win,
     origin_buf = buf,
     wins = {},
-    group = vim.api.nvim_create_augroup(("%s%s"):format(GROUP_PREFIX, win), {}),
+    group = group,
     opts = vim.tbl_deep_extend("force", cfg.config, opts or {}),
     _mapping = false,
   }, CloneWin)
@@ -196,13 +196,12 @@ function CloneWin:_set_autocmds()
       tostring(self.wins.observed.win),
       tostring(self.wins.clone.win),
     },
-    callback = function(e)
+    callback = vim.schedule_wrap(function(e)
       local win = vim.api.nvim_get_current_win()
       log.trace("%s event. Win: %s, Buf: %s", e.event, win, e.buf)
       self:close_clone()
       self:close_origin()
-      self:_clear_autocmds()
-    end,
+    end),
   })
 
   -- Adjust window size if the original window resized
@@ -225,7 +224,7 @@ function CloneWin:_set_autocmds()
   -- Set clone window current, if the cursor jumps to the original window
   on_event("WinEnter", {
     group = self.group,
-    callback = function(e)
+    callback = vim.schedule_wrap(function(e)
       local win = vim.api.nvim_get_current_win()
       if win == self.wins.observed.win then
         if self:_is_mapping() then
@@ -241,7 +240,7 @@ function CloneWin:_set_autocmds()
         )
         vim.api.nvim_set_current_win(self.wins.clone.win)
       end
-    end,
+    end),
   })
 
   -- Close clone window and redirect other buffer to original window if it trying to take over clone window
