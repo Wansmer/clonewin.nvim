@@ -238,6 +238,7 @@ function CloneWin:_set_autocmds()
           e.buf,
           self.wins.clone.win
         )
+        print('set current win')
         vim.api.nvim_set_current_win(self.wins.clone.win)
       end
     end),
@@ -248,7 +249,7 @@ function CloneWin:_set_autocmds()
     group = self.group,
     callback = function(e)
       local cwin = vim.api.nvim_get_current_win()
-      if cwin == self.wins.clone.win then
+      if cwin == self.wins.observed.win then
         log.trace("%s event. Win: %s, Buf: %s", e.event, cwin, e.buf)
         -- If reopen same buffer, do nothing
         if e.buf == self.origin_buf then
